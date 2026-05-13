@@ -566,7 +566,11 @@ class AuthManager {
       try {
         const secrets = await getSecrets();
         const cloudEndpoints = getCloudEndpoints(secrets.cloudType);
-        const response = await fetch(`${cloudEndpoints.graphApi}/v1.0/me`, {
+        // Use /users/{upn} for client credentials (app-only); /me requires delegated auth
+        const meOrUser = this.isClientCredentialsMode && secrets.userPrincipalName
+          ? `/users/${encodeURIComponent(secrets.userPrincipalName)}`
+          : '/me';
+        const response = await fetch(`${cloudEndpoints.graphApi}/v1.0${meOrUser}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
