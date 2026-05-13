@@ -1,5 +1,5 @@
 import type { AccountInfo, Configuration } from '@azure/msal-node';
-import { PublicClientApplication } from '@azure/msal-node';
+import { PublicClientApplication, ConfidentialClientApplication } from '@azure/msal-node';
 import logger from './logger.js';
 import fs, { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -229,8 +229,10 @@ class AuthManager {
   private isOAuthMode: boolean;
   private selectedAccountId: string | null;
   private useInteractiveAuth: boolean;
+  private ccaApp: ConfidentialClientApplication | null = null;
+  private isClientCredentialsMode: boolean = false;
 
-  constructor(config: Configuration, scopes: string[] = buildScopesFromEndpoints()) {
+  constructor(config: Configuration, scopes: string[] = buildScopesFromEndpoints(), clientSecret?: string) {
     logger.info(`And scopes are ${scopes.join(', ')}`, scopes);
     this.config = config;
     this.scopes = scopes;
@@ -243,6 +245,18 @@ class AuthManager {
     const oauthTokenFromEnv = process.env.MS365_MCP_OAUTH_TOKEN;
     this.oauthToken = oauthTokenFromEnv ?? null;
     this.isOAuthMode = oauthTokenFromEnv != null;
+
+    if (clientSecret) {
+      const ccaConfig = {
+        auth: {
+          ...(config.auth as object),
+          clientSecret,
+        },
+      };
+      this.ccaApp = new ConfidentialClientApplication(ccaConfig as any);
+      this.isClientCredentialsMode = true;
+      logger.info('AuthManager: client credentials mode enabled (app-only)');
+    }
   }
 
   /**
@@ -252,7 +266,7 @@ class AuthManager {
   static async create(scopes: string[] = buildScopesFromEndpoints()): Promise<AuthManager> {
     const secrets = await getSecrets();
     const config = createMsalConfig(secrets);
-    return new AuthManager(config, scopes);
+    return new AuthManager(config, scopes, secrets.clientSecret);
   }
 
   async loadTokenCache(): Promise<void> {
@@ -376,6 +390,21 @@ class AuthManager {
   }
 
   async getToken(forceRefresh = false): Promise<string | null> {
+    // App-only: client credentials flow (no user interaction, auto-refresh)
+    if (this.isClientCredentialsMode && this.ccaApp) {
+      if (this.accessToken && this.tokenExpiry && this.tokenExpiry > Date.now() && !forceRefresh) {
+        return this.accessToken;
+      }
+      const response = await this.ccaApp.acquireTokenByClientCredential({
+        scopes: ['https://graph.microsoft.com/.default'],
+      });
+      if (!response) throw new Error('Client credentials token acquisition failed');
+      this.accessToken = response.accessToken;
+      this.tokenExpiry = response.expiresOn ? new Date(response.expiresOn).getTime() : null;
+      logger.info('AuthManager: client credentials token acquired (expires in ~1h, auto-renews)');
+      return this.accessToken;
+    }
+
     if (this.isOAuthMode && this.oauthToken) {
       return this.oauthToken;
     }
@@ -724,6 +753,12 @@ class AuthManager {
    * @returns The access token string.
    */
   async getTokenForAccount(identifier?: string): Promise<string> {
+    if (this.isClientCredentialsMode && this.ccaApp) {
+      const token = await this.getToken();
+      if (!token) throw new Error('Client credentials token acquisition failed');
+      return token;
+    }
+
     if (this.isOAuthMode && this.oauthToken) {
       return this.oauthToken;
     }
