@@ -83,6 +83,23 @@ class GraphClient {
     this.outputFormat = outputFormat;
   }
 
+  /**
+   * Resolves /me paths to /users/{upn} when using app-only client credentials.
+   * Required because /me requires delegated auth; app-only must use /users/{id}.
+   */
+  private resolveEndpoint(endpoint: string): string {
+    if (!this.authManager.isClientCredentialsModeEnabled()) return endpoint;
+    const upn = this.secrets.userPrincipalName;
+    if (!upn) {
+      throw new Error(
+        'MS365_MCP_USER_UPN is required when using client credentials (app-only) auth. ' +
+        'Set it to the user principal name, e.g. user@domain.com'
+      );
+    }
+    // Replace /me at start of path or /me/ prefix
+    return endpoint.replace(/^\/me(\/|$)/, `/users/${encodeURIComponent(upn)}$1`);
+  }
+
   async makeRequest(endpoint: string, options: GraphRequestOptions = {}): Promise<unknown> {
     const contextTokens = getRequestTokens();
     const accessToken =
@@ -171,7 +188,8 @@ class GraphClient {
     options: GraphRequestOptions
   ): Promise<Response> {
     const cloudEndpoints = getCloudEndpoints(this.secrets.cloudType);
-    const url = `${cloudEndpoints.graphApi}/v1.0${endpoint}`;
+    const resolvedEndpoint = this.resolveEndpoint(endpoint);
+    const url = `${cloudEndpoints.graphApi}/v1.0${resolvedEndpoint}`;
 
     logger.info(`[GRAPH CLIENT] Final URL being sent to Microsoft: ${url}`);
 

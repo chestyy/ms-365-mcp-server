@@ -35,6 +35,7 @@ class EnvironmentSecretsProvider implements SecretsProvider {
       clientId: process.env.MS365_MCP_CLIENT_ID || getDefaultClientId(cloudType),
       tenantId: process.env.MS365_MCP_TENANT_ID || 'common',
       clientSecret: process.env.MS365_MCP_CLIENT_SECRET,
+      userPrincipalName: process.env.MS365_MCP_USER_UPN,
       cloudType,
     };
   }

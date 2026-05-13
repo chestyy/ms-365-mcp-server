@@ -697,6 +697,10 @@ class AuthManager {
     return this.isOAuthMode;
   }
 
+  isClientCredentialsModeEnabled(): boolean {
+    return this.isClientCredentialsMode;
+  }
+
   /**
    * Resolves an account by identifier (email or homeAccountId).
    * Resolution: username match (case-insensitive) → homeAccountId match → throw.
