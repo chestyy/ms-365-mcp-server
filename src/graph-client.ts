@@ -97,7 +97,7 @@ class GraphClient {
       );
     }
     // Replace /me at start of path or /me/ prefix
-    return endpoint.replace(/^\/me(\/|$)/, `/users/${encodeURIComponent(upn)}$1`);
+    return endpoint.replace(/^\/me(\/|$|\?)/, `/users/${encodeURIComponent(upn)}$1`);
   }
 
   async makeRequest(endpoint: string, options: GraphRequestOptions = {}): Promise<unknown> {
